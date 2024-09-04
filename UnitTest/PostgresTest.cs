@@ -117,25 +117,44 @@ namespace UnitTest
         [Test]
         public void Order6_BatchInsert()
         {
-            //id, name, age, address 
-            //1, 'wangxm', 18, '河北保定'
-            //模拟生成DataTable数据
-            DataTable dataTable = new DataTable();
-            dataTable.Columns.Add("id", typeof(int));
-            dataTable.Columns.Add("name", typeof(string));
-            dataTable.Columns.Add("age", typeof(int));
-            dataTable.Columns.Add("address", typeof(string));
-            //模拟生成1000条数据
-            for (int i = 0; i < 1000; i++)
+            
+
+            int threadCount = 50;
+            var tasks = new Task[threadCount];
+            for (int index = 0; index < threadCount; index++)
             {
-                DataRow row = dataTable.NewRow();
-                row["id"] = i + 1;
-                row["name"] = "wangxm";
-                row["age"] = 18;
-                row["address"] = "河北保定";
-                dataTable.Rows.Add(row);
+                int k = index;
+                tasks[index] = Task.Run(() =>
+                {
+                    //先删除
+                    string sql = String.Format("delete from test where name = '{0}'", k);
+                    int result = DbUtils.ExecuteNonQuery("postgres_test", sql);
+
+                    //id, name, age, address 
+                    //1, 'wangxm', 18, '河北保定'
+                    //模拟生成DataTable数据
+                    DataTable dataTable = new DataTable();
+                    dataTable.Columns.Add("id", typeof(int));
+                    dataTable.Columns.Add("name", typeof(string));
+                    dataTable.Columns.Add("age", typeof(int));
+                    dataTable.Columns.Add("address", typeof(string));
+                    //模拟生成1000条数据
+                    for (int i = k * 1000; i < k * 1000 + 1000; i++)
+                    {
+                        DataRow row = dataTable.NewRow();
+                        row["id"] = i + 1;
+                        row["name"] = String.Format("{0}", k);
+                        row["age"] = 18;
+                        row["address"] = "河北保定";
+                        dataTable.Rows.Add(row);
+                    }
+                    BulkToDB("postgres_test", dataTable, "test");
+
+                });
+
             }
-            BulkToDB("postgres_test", dataTable, "test");
+            // 等待所有任务完成
+            Task.WhenAll(tasks).Wait();
         }
 
         public void BulkToDB(String connection, DataTable dataTable, string tbname)

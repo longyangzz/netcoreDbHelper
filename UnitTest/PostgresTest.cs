@@ -80,7 +80,7 @@ namespace UnitTest
         public void Order4_QueryRecord()
         {
             //多线程并发调用sql查询
-            int threadCount = 5;
+            int threadCount = 205;
             var tasks = new Task[threadCount];
             for (int index = 0; index < threadCount; index++)
             {
@@ -119,7 +119,7 @@ namespace UnitTest
         {
             
 
-            int threadCount = 50;
+            int threadCount = 105;
             var tasks = new Task[threadCount];
             for (int index = 0; index < threadCount; index++)
             {
@@ -148,7 +148,7 @@ namespace UnitTest
                         row["address"] = "河北保定";
                         dataTable.Rows.Add(row);
                     }
-                    BulkToDB("postgres_test", dataTable, "test");
+                    BulkDatatableToDB("postgres_test", dataTable, "test");
 
                 });
 
@@ -355,7 +355,7 @@ namespace UnitTest
                         }
                         writer.Complete();
                     }
-
+                    npgsqlConnection.Close();
                 }
 
 
@@ -371,6 +371,247 @@ namespace UnitTest
 
         }
 
+        public void BulkDatatableToDB(String connection, DataTable dataTable, string tbname)
+        {
+
+            try
+            {
+                //** 测试示例
+                //dataTable.Clear();
+                //DataRow dr_rivl = dataTable.NewRow();
+                //dr_rivl[1] = "1";
+                //dr_rivl[2] = "555";
+                //dr_rivl[3] = DateTime.Now;
+                //dr_rivl[4] = "5555";
+                //dr_rivl[5] = 0.2;
+                //dr_rivl[6] = 0;
+                //dr_rivl[7] = DateTime.Now;
+
+                //dr_rivl[8] = DateTime.Now;    //! 峰值流量时间
+                //dr_rivl[9] = 5.6;
+                //dr_rivl[10] = "2021-08-08 00:00";
+                //dr_rivl[12] = 33;
+                //dataTable.Rows.Add(dr_rivl);
+                //** 测试示例
+                if (dataTable != null && dataTable.Rows.Count != 0)
+                {
+                    //目标表中所有列名
+                    String sqlTable = String.Format("Select column_name, data_type from information_schema.COLUMNS Where table_name ='{0}'", tbname.ToLower());
+                    DataTable dt = GetDataBySql(sqlTable);
+
+                    //获取所有列名 - 第0列。存储到list中
+                    List<string> lsColNames = new List<string>();
+                    List<string> lgnoreColNames = new List<string>();
+
+                    //对应列名的类型
+                    List<string> lsColDataType = new List<string>();
+
+                    //获取列名-数据库中表的列名
+                    for (int i = 0; i < dt.Rows.Count; i++)
+                    {
+                        if (dt.Rows[i][0].ToString().ToLower().Equals("id44") || dt.Rows[i][0].ToString().ToLower().Equals("intime"))
+                        {
+                            lgnoreColNames.Add(dt.Rows[i][0].ToString().ToLower());
+                        }
+                        else
+                        {
+                            //if (tbname.ToLower().Equals("hsfx_rivl_flow_plus_forecast"))
+                            //{
+                            //    if (lsColNames.Count == 2)
+                            //    {
+                            //        break;
+                            //    }
+                            //}
+                            //! 判断名字 在 datatable中存在，则添加
+                            if (dataTable.Columns.Contains(dt.Rows[i][0].ToString().ToLower()))
+                            {
+                                lsColNames.Add(dt.Rows[i][0].ToString().ToLower());
+                                lsColDataType.Add(dt.Rows[i][1].ToString().ToLower());
+                            }
+                        }
+                    }
+
+
+                    var commandFormat = string.Format("copy {0}({1}) FROM STDIN BINARY", tbname.ToLower(), string.Join(",", lsColNames));
+                    NpgsqlConnection npgsqlConnection = DbUtils.GetConnection(connection) as NpgsqlConnection;
+                    npgsqlConnection.Open();
+                    using (var writer = npgsqlConnection.BeginBinaryImport(commandFormat))
+                    {
+                        foreach (DataRow row in dataTable.Rows)
+                        {
+                            writer.StartRow();
+                            foreach (String collName in lsColNames)
+                            {
+                                //根据列名获取列的数据类型
+                                DataColumn coll = dataTable.Columns[collName];
+                                var colldbtype = coll.DataType.Name.ToString();
+
+                                //某列在数据库中的数据类型
+                                //判断当前值与 数据表中的数据类型是否一致
+                                int indexColName = lsColNames.IndexOf(coll.ColumnName.ToLower());
+                                String colDataType = lsColDataType[indexColName];
+
+                                NpgsqlTypes.NpgsqlDbType pgtype = NpgsqlTypes.NpgsqlDbType.Bigint;
+
+                                // 判断integer、bigint、numeric、double precision、character varying、timestamp
+                                if (colDataType.ToLower().Contains("integer"))
+                                {
+                                    pgtype = NpgsqlTypes.NpgsqlDbType.Integer;
+                                    int value = 0;
+                                    if (int.TryParse(row[coll.ColumnName].ToString(), out value))
+                                    {
+                                        writer.Write(value, pgtype);
+                                    }
+                                    else
+                                    {
+                                        writer.Write(DBNull.Value, pgtype);
+                                    }
+
+                                }
+                                else if (colDataType.ToLower().Contains("bigint"))
+                                {
+                                    pgtype = NpgsqlTypes.NpgsqlDbType.Bigint;
+                                    BigInteger value = 0;
+                                    if (BigInteger.TryParse(row[coll.ColumnName].ToString(), out value))
+                                    {
+                                        writer.Write(value, pgtype);
+                                    }
+                                    else
+                                    {
+                                        writer.Write(DBNull.Value, pgtype);
+                                    }
+                                }
+                                else if (colDataType.ToLower().Contains("numeric"))
+                                {
+                                    pgtype = NpgsqlTypes.NpgsqlDbType.Numeric;
+                                    Decimal value = 0;
+                                    if (Decimal.TryParse(row[coll.ColumnName].ToString(), out value))
+                                    {
+                                        writer.Write(value, pgtype);
+                                    }
+                                    else
+                                    {
+                                        writer.Write(DBNull.Value, pgtype);
+                                    }
+                                }
+                                else if (colDataType.ToLower().Contains("double precision"))
+                                {
+                                    pgtype = NpgsqlTypes.NpgsqlDbType.Double;
+
+                                    Double value = 0;
+                                    if (Double.TryParse(row[coll.ColumnName].ToString(), out value))
+                                    {
+                                        writer.Write(value, pgtype);
+                                    }
+                                    else
+                                    {
+                                        writer.Write(DBNull.Value, pgtype);
+                                    }
+                                }
+                                else if (colDataType.ToLower().Contains("character varying"))
+                                {
+                                    pgtype = NpgsqlTypes.NpgsqlDbType.Varchar;
+                                    if (row[coll.ColumnName] == DBNull.Value)
+                                    {
+                                        writer.Write(DBNull.Value, pgtype);
+                                    }
+                                    else
+                                    {
+
+                                        writer.Write(row[coll.ColumnName].ToString(), pgtype);
+                                    }
+
+                                }
+                                else if (colDataType.ToLower().Contains("timestamp"))
+                                {
+                                    pgtype = NpgsqlTypes.NpgsqlDbType.Timestamp;
+                                    DateTime value = new DateTime();
+                                    if (DateTime.TryParse(row[coll.ColumnName].ToString(), out value))
+                                    {
+                                        writer.Write(value, pgtype);
+                                    }
+                                    else
+                                    {
+                                        writer.Write(DBNull.Value, pgtype);
+                                    }
+                                }
+                                else if (colDataType.ToLower().Contains("text"))
+                                {
+
+                                    pgtype = NpgsqlTypes.NpgsqlDbType.Text;
+                                    if (row[coll.ColumnName] == DBNull.Value)
+                                    {
+                                        writer.Write(DBNull.Value, pgtype);
+                                    }
+                                    else
+                                    {
+                                        writer.Write(row[coll.ColumnName].ToString(), pgtype);
+                                    }
+
+                                }
+                                else
+                                {
+                                    pgtype = NpgsqlTypes.NpgsqlDbType.Varchar;
+                                    if (row[coll.ColumnName] == DBNull.Value)
+                                    {
+                                        writer.Write(DBNull.Value, pgtype);
+                                    }
+                                    else
+                                    {
+                                        writer.Write(row[coll.ColumnName], pgtype);
+                                    }
+
+                                }
+                            }
+                        }
+                        writer.Complete();
+                    }
+                    npgsqlConnection.Close();
+                }
+
+
+            }
+            catch (Exception)
+            {
+                throw;
+            }
+            finally
+            {
+
+            }
+
+        }
+
+        public DataTable GetDataBySql(string sql)
+        {
+            DataTable dt = new DataTable();
+
+            DataSet dset = null;
+
+            try
+            {
+                NpgsqlCommand cmd = DbUtils.GetConnection("postgres_test").CreateCommand() as NpgsqlCommand;
+                cmd.CommandText = sql;
+                cmd.CommandTimeout = 0;
+                NpgsqlDataAdapter sda = new NpgsqlDataAdapter(cmd);
+
+                dset = new DataSet();
+                sda.Fill(dset);
+                cmd.Cancel();
+                DbUtils.GetConnection("postgres_test").Close();
+            }
+            catch (NpgsqlException e)
+            {
+                dset = null;
+            }
+
+            if (dset != null && dset.Tables.Count > 0)
+            {
+                dt = dset.Tables[0];
+            }
+
+            return dt;
+        }
         //test dataset
         [Test]
         public System.Data.DataSet ExecuteDataSet(string commandText)

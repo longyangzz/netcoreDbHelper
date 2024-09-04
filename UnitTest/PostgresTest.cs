@@ -370,5 +370,27 @@ namespace UnitTest
             }
 
         }
+
+        //test dataset
+        [Test]
+        public System.Data.DataSet ExecuteDataSet(string commandText)
+        {
+            DataSet ret = null;
+
+            try
+            {
+                NpgsqlCommand npgsqlCommand = DbUtils.GetConnection("postgres_test").CreateCommand() as NpgsqlCommand;
+                npgsqlCommand.CommandText = commandText;
+                NpgsqlDataAdapter sda = new NpgsqlDataAdapter(npgsqlCommand);
+
+                ret = new DataSet();
+                sda.Fill(ret);
+            }
+            catch (NpgsqlException e)
+            {
+                ret = null;
+            }
+            return ret;
+        }
     }
 }

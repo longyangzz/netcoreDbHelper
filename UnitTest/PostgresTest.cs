@@ -53,7 +53,22 @@ namespace UnitTest
                     string sql = String.Format("Insert Into test (id, name, age, address) Values({0}, 'wangxm', 18, '河北保定')", i + 1);
                     int result = DbUtils.ExecuteNonQuery("postgres_test", sql);
                     Assert.IsTrue(result == 1);
+                    //当前线程中继续多线程
+                    int threadCount2 = 50;
+                    var tasks2 = new Task[threadCount2];
+                    for (int index2 = 0; index2 < threadCount2; index2++)
+                    {
+                        int j = index2;
+                        tasks2[index2] = Task.Run(() =>
+                        {
+                            string sql = String.Format("Insert Into test (id, name, age, address) Values({0}, 'wangxm', 18, '河北保定')", 50 * (i + 1) + j + 1);
+                            int result = DbUtils.ExecuteNonQuery("postgres_test", sql);
+                            Assert.IsTrue(result == 1);
+                        });
 
+                    }
+                    // 等待所有任务完成
+                    Task.WhenAll(tasks2).Wait();
                 });
 
             }
